@@ -13,6 +13,8 @@ import struct
 import time
 import json
 import xml.etree.ElementTree as ET
+import threading
+import queue
 from typing import List, Tuple, Optional, Dict
 from utils import *
 
@@ -559,6 +561,288 @@ def main():
     
     if args.save and results:
         save_results(results, "network_scan", "json")
+
+class AdvancedNetworkAnalyzer:
+    """Продвинутый анализатор сети"""
+    
+    def __init__(self):
+        self.results = []
+    
+    def traceroute(self, target: str, max_hops: int = 30) -> List[Dict]:
+        """Трассировка маршрута"""
+        print_info(f"Трассировка к {target} (максимум {max_hops} хопов)...")
+        
+        route = []
+        for ttl in range(1, max_hops + 1):
+            try:
+                # Создаем ICMP пакет
+                sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP)
+                sock.setsockopt(socket.IPPROTO_IP, socket.IP_TTL, ttl)
+                sock.settimeout(3)
+                
+                # Отправляем пакет
+                start_time = time.time()
+                sock.sendto(b'\x08\x00\x00\x00\x00\x00\x00\x00', (target, 0))
+                
+                try:
+                    data, addr = sock.recvfrom(1024)
+                    end_time = time.time()
+                    rtt = (end_time - start_time) * 1000
+                    
+                    hop_info = {
+                        'hop': ttl,
+                        'ip': addr[0],
+                        'rtt': round(rtt, 2)
+                    }
+                    route.append(hop_info)
+                    print_success(f"{ttl:2d}. {addr[0]:15s} {rtt:6.2f}ms")
+                    
+                    if addr[0] == target:
+                        break
+                        
+                except socket.timeout:
+                    print_warning(f"{ttl:2d}. * * * Timeout")
+                
+                sock.close()
+                
+            except Exception as e:
+                print_error(f"Ошибка на хопе {ttl}: {e}")
+                break
+        
+        return route
+    
+    def network_topology_discovery(self, network: str) -> Dict:
+        """Обнаружение топологии сети"""
+        print_info(f"Обнаружение топологии сети {network}...")
+        
+        try:
+            net = ipaddress.ip_network(network, strict=False)
+            hosts = list(net.hosts())
+            
+            # Сканируем все хосты
+            scanner = NetworkScanner()
+            active_hosts = []
+            
+            for host in hosts:
+                if scanner.ping_host(str(host)):
+                    active_hosts.append(str(host))
+            
+            # Анализируем маршрутизацию
+            topology = {
+                'network': str(net),
+                'active_hosts': active_hosts,
+                'gateway': self._find_gateway(),
+                'dns_servers': self._get_dns_servers(),
+                'subnets': self._discover_subnets(active_hosts)
+            }
+            
+            print_success(f"Найдено активных хостов: {len(active_hosts)}")
+            print_success(f"Шлюз: {topology['gateway']}")
+            
+            return topology
+            
+        except Exception as e:
+            print_error(f"Ошибка обнаружения топологии: {e}")
+            return {}
+    
+    def _find_gateway(self) -> str:
+        """Поиск шлюза по умолчанию"""
+        try:
+            result = subprocess.run(['ip', 'route', 'show', 'default'], 
+                                  capture_output=True, text=True)
+            if result.returncode == 0:
+                lines = result.stdout.strip().split('\n')
+                for line in lines:
+                    if 'default via' in line:
+                        parts = line.split()
+                        if len(parts) >= 3:
+                            return parts[2]
+        except:
+            pass
+        return "Unknown"
+    
+    def _get_dns_servers(self) -> List[str]:
+        """Получение DNS серверов"""
+        try:
+            with open('/etc/resolv.conf', 'r') as f:
+                dns_servers = []
+                for line in f:
+                    if line.startswith('nameserver'):
+                        dns_servers.append(line.split()[1])
+                return dns_servers
+        except:
+            return []
+    
+    def _discover_subnets(self, hosts: List[str]) -> List[str]:
+        """Обнаружение подсетей"""
+        subnets = set()
+        for host in hosts:
+            try:
+                ip = ipaddress.ip_address(host)
+                # Предполагаем /24 подсеть
+                subnet = ipaddress.ip_network(f"{ip}/24", strict=False)
+                subnets.add(str(subnet))
+            except:
+                pass
+        return list(subnets)
+
+class NetworkTrafficAnalyzer:
+    """Анализатор сетевого трафика"""
+    
+    def __init__(self):
+        self.captured_packets = []
+        self.analysis_results = {}
+    
+    def capture_traffic(self, interface: str = None, duration: int = 60, 
+                       filter_expr: str = None) -> List[Dict]:
+        """Захват сетевого трафика"""
+        print_info(f"Захват трафика ({duration} секунд)...")
+        
+        try:
+            # Используем tcpdump для захвата
+            cmd = ['tcpdump', '-i', interface or 'any', '-n', '-l']
+            if filter_expr:
+                cmd.extend(['-f', filter_expr])
+            
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, 
+                                     stderr=subprocess.PIPE, text=True)
+            
+            start_time = time.time()
+            packets = []
+            
+            while time.time() - start_time < duration:
+                try:
+                    line = process.stdout.readline()
+                    if line:
+                        packet_info = self._parse_tcpdump_line(line)
+                        if packet_info:
+                            packets.append(packet_info)
+                            print(f"\rЗахвачено пакетов: {len(packets)}", end='', flush=True)
+                except:
+                    break
+            
+            process.terminate()
+            print()
+            
+            self.captured_packets = packets
+            print_success(f"Захвачено {len(packets)} пакетов")
+            return packets
+            
+        except Exception as e:
+            print_error(f"Ошибка захвата трафика: {e}")
+            return []
+    
+    def _parse_tcpdump_line(self, line: str) -> Optional[Dict]:
+        """Парсинг строки tcpdump"""
+        try:
+            # Простой парсинг tcpdump вывода
+            parts = line.strip().split()
+            if len(parts) < 3:
+                return None
+            
+            timestamp = parts[0]
+            protocol = parts[1].rstrip(':')
+            
+            # Извлекаем IP адреса и порты
+            src_dst = parts[2]
+            if '>' in src_dst:
+                src, dst = src_dst.split('>')
+                src = src.strip()
+                dst = dst.strip()
+            else:
+                return None
+            
+            return {
+                'timestamp': timestamp,
+                'protocol': protocol,
+                'source': src,
+                'destination': dst,
+                'raw': line.strip()
+            }
+        except:
+            return None
+    
+    def analyze_traffic(self, packets: List[Dict]) -> Dict:
+        """Анализ захваченного трафика"""
+        print_info("Анализ трафика...")
+        
+        analysis = {
+            'total_packets': len(packets),
+            'protocols': {},
+            'top_talkers': {},
+            'connections': {},
+            'anomalies': []
+        }
+        
+        # Анализ протоколов
+        for packet in packets:
+            protocol = packet.get('protocol', 'unknown')
+            analysis['protocols'][protocol] = analysis['protocols'].get(protocol, 0) + 1
+        
+        # Топ отправителей
+        for packet in packets:
+            src = packet.get('source', 'unknown')
+            analysis['top_talkers'][src] = analysis['top_talkers'].get(src, 0) + 1
+        
+        # Сортируем результаты
+        analysis['protocols'] = dict(sorted(analysis['protocols'].items(), 
+                                          key=lambda x: x[1], reverse=True))
+        analysis['top_talkers'] = dict(sorted(analysis['top_talkers'].items(), 
+                                            key=lambda x: x[1], reverse=True)[:10])
+        
+        print_success("Анализ завершен")
+        return analysis
+
+class PortKnocking:
+    """Port Knocking для скрытого доступа"""
+    
+    def __init__(self, sequence: List[int], delay: float = 1.0):
+        self.sequence = sequence
+        self.delay = delay
+    
+    def knock_sequence(self, target: str) -> bool:
+        """Выполнение последовательности port knocking"""
+        print_info(f"Port knocking на {target}: {self.sequence}")
+        
+        try:
+            for i, port in enumerate(self.sequence):
+                print_info(f"Knock {i+1}/{len(self.sequence)}: порт {port}")
+                
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(1)
+                result = sock.connect_ex((target, port))
+                sock.close()
+                
+                if i < len(self.sequence) - 1:  # Не ждем после последнего порта
+                    time.sleep(self.delay)
+            
+            print_success("Port knocking завершен")
+            return True
+            
+        except Exception as e:
+            print_error(f"Ошибка port knocking: {e}")
+            return False
+    
+    def test_knock_sequence(self, target: str, test_port: int = 22) -> bool:
+        """Тестирование результата port knocking"""
+        print_info(f"Тестирование доступа к порту {test_port}...")
+        
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(3)
+            result = sock.connect_ex((target, test_port))
+            sock.close()
+            
+            if result == 0:
+                print_success(f"Порт {test_port} открыт после knocking!")
+                return True
+            else:
+                print_warning(f"Порт {test_port} все еще закрыт")
+                return False
+                
+        except Exception as e:
+            print_error(f"Ошибка тестирования: {e}")
+            return False
 
 if __name__ == "__main__":
     main()

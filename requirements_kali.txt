@@ -1,0 +1,45 @@
+# CTF Tools - Requirements for Kali Linux
+# Большинство пакетов уже установлены в Kali Linux
+
+# Основные пакеты (обычно уже установлены в Kali)
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+colorama>=0.4.6
+termcolor>=2.3.0
+tqdm>=4.66.0
+
+# Сетевые инструменты
+scapy>=2.5.0
+python-nmap>=0.7.1
+paramiko>=3.3.0
+netifaces>=0.11.0
+
+# Криптография (обычно уже установлены)
+cryptography>=41.0.0
+pycryptodome>=3.19.0
+
+# Работа с изображениями
+pillow>=10.0.0
+
+# Системный мониторинг
+psutil>=5.9.0
+watchdog>=3.0.0
+
+# OSINT и разведка
+dnspython>=2.4.0
+python-whois>=0.8.0
+shodan>=1.30.0
+censys>=2.2.0
+
+# Анализ файлов
+python-magic>=0.4.27
+
+# Дополнительные пакеты для Kali
+# Эти пакеты могут потребоваться для полной функциональности
+# Установите их через apt если нужно:
+# sudo apt install python3-requests python3-bs4 python3-colorama
+# sudo apt install python3-scapy python3-nmap python3-paramiko
+# sudo apt install python3-cryptography python3-pil
+# sudo apt install python3-psutil python3-dnspython
+# sudo apt install python3-whois python3-shodan
+

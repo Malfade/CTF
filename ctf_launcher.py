@@ -93,7 +93,47 @@ class CTFLauncher:
                     '--scan-url https://example.com',
                     '--scan-onion facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion'
                 ]
-            }
+            },
+            '9': {
+                'name': 'Social Engineering',
+                'desc': 'Инструменты социальной инженерии (только CTF)',
+                'script': 'social_engineering.py',
+                'examples': [
+                    '--target https://example.com --clone-only',
+                    '--target https://bank.com --clone-phishing',
+                    '--target https://login.site.com --phishing-only --template bank'
+                ]
+            },
+            '10': {
+                'name': 'Advanced Crypto',
+                'desc': 'Продвинутые криптографические инструменты',
+                'script': 'advanced_crypto.py',
+                'examples': [
+                    '--encrypt "Hello" --method aes --key "secretkey"',
+                    '--generate-rsa 2048',
+                    '--crack-hash 5f4dcc3b5aa765d61d8327deb882cf99 --hash-type md5'
+                ]
+            },
+            '11': {
+                'name': 'Malware Analysis',
+                'desc': 'Анализ вредоносного ПО (только CTF)',
+                'script': 'malware_analysis.py',
+                'examples': [
+                    '--file suspicious.exe',
+                    '--file malware.bin --pe-only',
+                    '--file sample.exe --yara-only'
+                ]
+            },
+            '12': {
+                'name': 'OSINT Investigator',
+                'desc': 'Поиск информации о человеке через Tor (только CTF)',
+                'script': 'osint_investigator.py',
+                'examples': [
+                    '--username john_doe --email john@example.com',
+                    '--phone +1234567890 --name "John Doe"',
+                    '--username target_user --html-report'
+                ]
+            },
         }
     
     def show_banner(self):
@@ -187,7 +227,7 @@ class CTFLauncher:
             self.show_banner()
             self.show_menu()
             
-            choice = input(f"\n{Colors.INFO}Выберите инструмент [0-8]: {Colors.RESET}").strip()
+            choice = input(f"\n{Colors.INFO}Выберите инструмент [0-12]: {Colors.RESET}").strip()
             
             if choice == '0':
                 print_success("До встречи на CTF!")

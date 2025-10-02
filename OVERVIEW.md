@@ -264,6 +264,35 @@ CTF/
 ```bash
 python3 ctf_launcher.py
 ```
+ 1. Установка
+cd /home/malfade/Worl/cybersecurity/CTF
+./setup.sh
+
+# 2. Запуск главного меню
+python3 ctf_launcher.py
+
+# 3. Или отдельные инструменты:
+python3 network_tools.py --help
+python3 web_exploit.py --help
+python3 crypto_tools.py --help
+
+ Сканирование сети
+python3 network_tools.py --scan-common 192.168.1.1
+
+# Взлом MD5
+python3 crypto_tools.py --crack-hash 5f4dcc3b5aa765d61d8327deb882cf99 --type md5
+
+# Генерация reverse shell
+python3 payload_generator.py --reverse-shell 10.10.10.1 4444 --shell-type bash
+
+# Мониторинг защиты
+python3 defense_monitor.py --monitor-network --duration 120
 
 **Удачи на CTF соревнованиях! 🏆**
+
+
+
+
+
+
 
