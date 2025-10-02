@@ -134,6 +134,15 @@ class CTFLauncher:
                     '--username target_user --html-report'
                 ]
             },
+            '13': {
+                'name': 'Phishing Server',
+                'desc': 'HTTP сервер для сбора данных с фишинговых страниц (только CTF)',
+                'script': 'phishing_server.py',
+                'examples': [
+                    '--port 8080',
+                    '--port 3000'
+                ]
+            },
         }
     
     def show_banner(self):
@@ -227,7 +236,7 @@ class CTFLauncher:
             self.show_banner()
             self.show_menu()
             
-            choice = input(f"\n{Colors.INFO}Выберите инструмент [0-12]: {Colors.RESET}").strip()
+            choice = input(f"\n{Colors.INFO}Выберите инструмент [0-13]: {Colors.RESET}").strip()
             
             if choice == '0':
                 print_success("До встречи на CTF!")

